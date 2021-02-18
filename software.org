@@ -1,0 +1,43 @@
+* Software for Modeling
+
+#+BEGIN_SRC R
+library(tidyverse)
+library(tidymodels)
+#+END_SRC
+
+This chapter is pretty much all text.
+
+Here are some quotes:
+
+The utility of a model hinges on its ability to be reductive.
+
+
+
+The Pit of Success: in stark contrast to a summit, a peak, or a journey across a desert to find victory through many trials and surprises, we want our customers to simply fall into winning practices by using our platform and frameworks.
+
+As an example, Kuhn and Johnson (2020) use data to model the daily ridership of Chicago’s public train system using predictors such as the date, the previous ridership results, the weather, and other factors. An approximation of these authors’ “inner monologue” when analyzing these data is, in order:
+
+| Thoughts                                                                                                                         | Activity            |
+|----------------------------------------------------------------------------------------------------------------------------------+---------------------|
+| The daily ridership values between stations are extremely correlated.                                                            | EDA                 |
+| Weekday and weekend ridership look very different.                                                                               | EDA                 |
+| One day in the summer of 2010 has an abnormally large number of riders.                                                          | EDA                 |
+| Which stations had the lowest daily ridership values?                                                                            | EDA                 |
+| Dates should at least be encoded as day-of-the-week, and year.                                                                   | Feature Engineering |
+| Maybe PCA could be used on the correlated predictors to make it easier for the models to use them.                               | Feature Engineering |
+| Hourly weather records should probably be summarized into daily measurements.                                                    | Feature Engineering |
+| Let’s start with simple linear regression, K-nearest neighbors, and a boosted decision tree.                                     | Model Fitting       |
+| How many neighbors should be used?                                                                                               | Model Tuning        |
+| Should we run a lot of boosting iterations or just a few?                                                                        | Model Tuning        |
+| How many neighbors seemed to be optimal for these data?                                                                          | Model Tuning        |
+| Which models have the lowest root mean squared errors?                                                                           | Model Evaluation    |
+| Which days were poorly predicted?                                                                                                | EDA                 |
+| Variable importance scores indicate that the weather information is not predictive. We’ll drop them from the next set of models. | Model Evaluation    |
+| It seems like we should focus on a lot boosting iterations for that model.                                                       | Model Evaluation    |
+| We need to encode holiday features to improve predictions on (and around) those dates.                                           | Feature Engineering |
+| Let’s drop K-NN from the model list.                                                                                             | Model Evaluation    |
+
+and so on. Eventually, a model is selected that is able to achieve sufficient performance.
+
+* A Tidyverse Primer
+
