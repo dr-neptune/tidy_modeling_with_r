@@ -41,3 +41,40 @@ and so on. Eventually, a model is selected that is able to achieve sufficient pe
 
 * A Tidyverse Primer
 
+#+BEGIN_SRC R
+(boot_sampl <- rsample::bootstraps(mtcars, times = 3))
+
+class(boot_sampl)
+
+mtcars %>%
+    arrange(gear) %>%
+    slice(1:10) -> small_mtcars
+
+mtcars %>%
+    ggplot(aes(x = wt, y = mpg)) +
+    geom_point() +
+    geom_smooth(method = lm)
+
+## example of an impure function with lots of side effects
+compute_log_ratio <- function(mpg, wt) {
+    ## gets external data
+    log_base <- getOption("log_base", default = exp(1))
+    results <- log(mpg / wt, base = log_base)
+    ## print to the console
+    print(mean(results))
+    ## sets external data
+    done <<- TRUE
+    results
+}
+
+## a better version
+compute_log_ratio <- function(mpg, wt, log_base = exp(1)) {
+    log(mpg / wt, base = log_base)
+}
+
+mtcars %>%
+    head %>%
+    extract2("mpg") %>% 
+    map_dbl(~ .x %>% sqrt)
+#+END_SRC
+
