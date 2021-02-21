@@ -76,5 +76,20 @@ mtcars %>%
     head %>%
     extract2("mpg") %>% 
     map_dbl(~ .x %>% sqrt)
-#+END_SRC
 
+mtcars %>%
+    {map2_dbl(.x = pluck(., "mpg"),
+              .y = pluck(., "wt"),
+              ~ log(.x / .y))}
+
+library(lubridate)
+
+url <- "http://bit.ly/raw-train-data-csv"
+
+url %>%
+    read_csv() %>%
+    select(station = stationname, date, rides) %>%
+    mutate(date = mdy(date), rides = rides / 1000) %>%
+    group_by(date, station) %>%
+    summarize(rides = max(rides), .groups = "drop")
+#+END_SRC
