@@ -1,0 +1,255 @@
+* Regression Quattro Stagioni
+
+  All glory to [[https://peterroelants.github.io/posts/linear-regression-four-ways/][Peter Roelants]]
+
+  This is an overview of Linear Regression implemented 4 different ways:
+  1. Simple Linear Regression
+  2. Ordinary Least Squares Regression
+  3. Gradient Descent
+  4. MCMC Parameter Estimation with Metropolis-Hastings
+
+#+BEGIN_SRC R
+library(tidyverse)
+#+END_SRC
+
+* Linear Regression Problem Description
+
+  For $n$ data samples, the assumed linear relationship can be modeled as:
+
+  $y_i = \theta_0 + \theta_1 x_1 + \epsilon_i$, $(i = 1, ..., n)$
+
+  where:
+
+  $x_i$ is the independent input variable of sample $i$, with $x = \{x_i, ..., x_n\}$
+  $y_i$ is the dependent (output) variable of sample $i$, with $y = \{y_i, ..., y_n\}$
+  $\epsilon_i \sim \mathcal{N}(0, \sigma^2)$
+  $\theta = \{\theta_0, \theta_1\}$ is the set of parameters we want to optimize.
+
+  First we will generate some toy data:
+
+#+BEGIN_SRC R
+set.seed(8888)
+num_samples <- 101; slope <- 3; bias <- 2; err_std_dev <- 0.5
+
+noisy <- runif(n = num_samples, min = 0, max = 1) * slope + bias + (rnorm(101, 0, 1) * err_std_dev) %>%
+    tibble("x" = seq(0.0, 1.0, .01), "y" = .)
+
+noisy %>%
+    ggplot(aes(x = x, y = y)) +
+    geom_point(color = "mediumpurple")+
+    geom_smooth(method = "lm",
+                se = FALSE,
+                lty = 2,
+                color = "firebrick",
+                alpha = 0.5) +
+    ggtitle("Noisy Data Samples from a Linear Line")
+#+END_SRC
+
+* Probabilistic Description
+
+  An alternative description is the Bayesian one, in which we treat the dependent variable $y$ as randomly sampled from a normal distribution with a mean $\mu$ as a function of the independent variable $x$ and random variables $\theta$.
+
+  $y_i \sim \mathcal{N}(\theta_0 + \theta_1 x_i, \sigma^2)$, $(i = 1, ..., n)$, $\mu = \theta_0 + \theta_1 x_i$
+
+  Given the probability density function of the normal distribution, we can write
+
+  $p(y_i | \theta_0 + \theta_1 x_i, \sigma^2) = \frac{1}{\sqrt{2 \pi \theta^2}} \exp({- \frac{(y_i - (\theta_0 + \theta_1 x_i))^2}{2 \sigma^2}})$
+
+  Given the observed $(x, y)$ data and ignoring the variance, we can then model the parameters $\theta$ as a density function which we can split up according the Baye's Rule:
+
+  $p(\theta | y, x) = \frac{p(y | x, \theta) p(\theta)}{p(y | x)}$
+
+  where
+
+  $p(\theta | y, x)$ is the posterior density which is our belief of parameters $\theta$ after taking the observed data $(x, y)$ into account
+  $p(y | x, \theta)$ is the likelihood function, which is the probability density of the normal distribution
+  $p(\theta)$ is the prior density of $\theta$, which captures out belief about parameters $\theta$ before we observed any data.
+  $p(y | x)$ is the marginal likelihood of the data where $\theta$ has been marginalized out according to $p(y | x) = \int_{\theta} p(y | x, \theta) p(\theta) d \theta$
+
+* Maximum a Posteriori Estimation (MAP)
+
+  We can find a point estimate $\hat{\theta}$ to fit our parameters $\theta$ by finding the maximum of the posterior distribution $p(\theta | y, x)$:
+
+  $\hat{\theta} = \arg\max_\theta p(\theta | y, x) = \arg\max_\theta \frac{p(y | x, \theta) p(\theta)}{p(y | x)}$
+
+  This can be simplified since the marginal likelihood is independent of the parameters $\theta$ and thus won't have an effect on $\hat{\theta}$ corresponding to the maximum of the posterior
+
+  $\hat{\theta} = \arg\max_\theta p(\theta | y, x) = \arg\max_\theta {p(y | x, \theta) p(\theta)}$
+
+  This is known as the maximum a posteriori (MAP) estimate.
+
+* Maximum Likelihood Estimation (MLE)
+
+  Deviating from the Bayesian perspective, some of the models will ignore the prior $p(\theta)$ for simplicity. They will be treating $p(\theta)$ as an uninformative and improper prior:
+
+  $\hat{\theta} = \arg\max_\theta p(\theta | y, x) \approx \arg\max_\theta p(y | x, \theta)$
+
+  The resulting optimization is known as maximum likelihood estiamtion, which will focus only on the likelihood function $p(y | x, \theta)$ while ignoring the prior and marginal term completely.
+
+  In our regression example, if we assume that all samples $(y_i, x_i)$ are taken independently from the normal distribution $y \sim \mathcal{N}(\theta_0 + \theta_1 x_1, \sigma^2)$, we can  write the likelihood function based on the definition of the normal distribution's density function:
+
+  $p(y | x, \theta_0, \theta_1) = \Pi_{i = 1}^n p(y_i | x_i, \theta_0, \theta_1) = \Pi_{i = 1}^n \frac{1}{\sqrt{2 \pi \sigma^2}} \exp (- \frac{(y_i - (\theta_0 + \theta_1 x_i))^2}{2 \sigma^2})$
+
+* Simple Linear Regression
+
+  Given the density function above, we can find the estimated parameters $\hat{\theta_0}$ and $\hat{\theta_1}$ corresponding to the maximum of the likelihood function $p(y | x, \theta_0, \theta_1)$.
+
+  Because exponents can be a pain to work with, we usually find the log-likelihood. Since the log function is strictly increasing, using a log transform will not affect the maxima of the original likelihood function.
+
+  $\log(p(y | x, \theta_0, \theta_1)) = n(1 - \log(\sqrt{2 \pi \sigma^2}) - \frac{1}{2 \sigma^2}[\sum\limits_{i = 1}^n (y_i - (\theta_0 + \theta_1 x_i))^2])$
+
+  We can then find the maximum for this function by finding the derivative w.r.t its parameters set to 0. If we solve this for our parameters, we find:
+
+  $\hat{\theta_0} = \bar{y} - \hat{\theta_1} \bar{x}$
+  $\hat{\theta_1} = \frac{\sum_{i = 1}^n (x_i - \bar{x})(y_i - \bar{y})}{\sum_{i = 1}^n (x_i - \bar{x})^2}$
+  
+#+BEGIN_SRC R
+## compute means
+noisy %>%
+    summarize(mean(x), mean(y)) %->% c(x_mean, y_mean)
+
+## compute parameters
+noisy %>%
+    mutate(p1 = x - x_mean,
+           p2 = y - y_mean,
+           p3 = p1^2) %>%
+    summarize("theta_hat_1" = sum(p1 * p2) / sum(p3),
+              "theta_hat_0" = y_mean - theta_hat_1 * x_mean) %->% c(s_th1, s_th0)
+
+## generate a function with the fitted line
+fit_simple_reg <- function(x) s_th0 + s_th1 * x
+
+noisy %>%
+    ggplot(aes(x = x, y = y)) +
+    geom_point(color = "mediumpurple")+
+    geom_smooth(method = "lm",
+                se = FALSE,
+                lty = 2,
+                color = "firebrick",
+                alpha = 0.3) +
+    geom_line(aes(x = x, y = fit_simple_reg(x)),
+              color = "forestgreen") +
+    ggtitle("Noisy Data Samples from a Linear Line")
+#+END_SRC
+
+* Ordinary Least Squares Regression
+
+  In the simple linear regression formulation above we end up maximizing the log-likelihood which hs the term $- \sum\limits_{i = 1}^n (y_i - (\theta_0 + \theta_1 x^i))^2$
+  This would be the same as minimizing the negative of this term. We can simplify this solution and make it more general by vectorizing our variables and data:
+
+  $\Theta = [\theta_0, \theta_1]$
+  $X = [(1, x_1), ..., (1, x_n)]$
+  $Y = [y_1, ..., y_n]$
+
+  Our optimization problem then becomes:
+
+  $\hat{\Theta} = \arg\min_\Theta ||Y - X \Theta ||^2$
+
+  This is what is typically known as ordinary least squares, since we are finding the solution with the least deviance in the square of the residuals (error).
+  In our example, minimizing the least squares is the same as maximizing the likelihood.
+
+  We can solve this by setting the Jacobian (derivative) of $||Y - X \Theta||^2$ w.r.t $\Theta$ to 0:
+
+  $\frac{\partial ||Y - X \Theta||^2}{\partial \Theta} = -2  X^T (Y - X \Theta) = 0$
+
+  When we drop the $-2$ by multiplying this into the 0, this gives us $X^T X \hat{\Theta} = X^T Y$ which leads us to the following solution:
+
+  $\hat{\Theta} = (X^T X)^{-1} X^T Y$
+
+  with $(X^T X)^{-1} X^T$ being the Moore-Penrose pseudo-inverse (generalization of the inverse matrix) of $X$.
+
+#+BEGIN_SRC R
+x_mat <- matrix(c(rep(1, 101), noisy$x), ncol = 2)
+
+solve(t(x_mat) %*% x_mat) %*% t(x_mat) %*% noisy$y %->% c(ols_th0, ols_th1)
+
+## generate a function with the fitted line
+fit_ols_reg <- function(x) ols_th0 + ols_th1 * x
+
+noisy %>%
+    ggplot(aes(x = x, y = y)) +
+    geom_point(color = "mediumpurple")+
+    geom_smooth(method = "lm",
+                se = FALSE,
+                lty = 2,
+                color = "firebrick",
+                alpha = 0.3) +
+    geom_line(aes(x = x, y = fit_simple_reg(x)),
+              color = "forestgreen") +
+    geom_line(aes(x = x, y = fit_ols_reg(x)),
+              color = "orange") +
+    ggtitle("Noisy Data Samples from a Linear Line")
+#+END_SRC  
+
+#+BEGIN_SRC R
+noisy %>%
+    mutate(simple_est = fit_simple_reg(x),
+           ols_est = fit_ols_reg(x),
+           est_diff = abs(simple_est - ols_est))
+#+END_SRC
+
+* Gradient Descent Optimization
+
+  OLS assumes a unique solution to the least squares maximization problem and will not work in more complex non-linear regression methods such as neural networks where our optimization surface is not convex anymore. In this case, we can use stochastic gradient descent to optimize our loss function.
+
+  We will go over optimizing our parameters with gradient descent, which can be made stochastic by breaking it down in random batches of size $m < n$.
+
+  We're optimizing the same loss function of OLS, the log-likelihood:
+
+  $\hat{\Theta} = \arg\max_\Theta \log(p(Y | X, \Theta)) = \arg\min_\Theta ||Y - X \Theta||^2$
+
+  Now since we wish to minimize this loss function, we can just take small steps towards the minimum of this function, which will lie in the direction opposite the gradient.
+  We saw that the gradient of this loss function was the Jacobian:
+
+  $\frac{\partial \mathrm{loss}}{\partial \Theta} = \frac{\partial ||Y - X \Theta||^2}{\partial \Theta} = -2 X^T(Y - X \Theta)$
+
+  This means that if we start out with random parameters $\hat{\Theta}(0)$, we can update these parameters each iteration in the opposite direction of our gradient. Because our loss function is convex, we should end up at our minimum after a certain number of steps. One thing we must be sure of is that we don't "step over" the minimum of our function, so we introduce a learning rate parameter $\eta = 0.01$ to prevent this from happening. The parameter update for each iteration $k$ becomes
+
+  $\hat{\Theta}(k + 1) = \hat{\Theta}(k) - \eta \frac{\partial \mathrm{loss}}{\partial \hat{\Theta}(k)}$
+
+  The learning rate is an important parameter. If it's too large, the solution might never converge, and if its too small it will take a lot of iterations.
+
+#+BEGIN_SRC R
+update <- function(Theta, X, y, learning_rate) {
+    ## compute gradient
+    gradient <- - 2.0 * (t(X) %*% (y - X %*% Theta))
+    ## update the parameters
+    Theta <- Theta - (gradient * learning_rate)
+}
+
+## this is not correct!
+t(x_mat) %*% (noisy$y - x_mat %*% c(1.93, 3.16))
+
+- 2.0 * (t(x_mat) %*% (noisy$y - (x_mat %*% c(rnorm(1), rnorm(1))))) * 0.000001
+
+Theta <- c(rnorm(1), rnorm(1)); Eta <- 0.000001; losses <- double(); params <- double()
+
+map(1:1500,
+    ~ {
+        Theta <<- update(Theta = Theta,
+                       X = x_mat,
+                       y = noisy$y,
+                       learning_rate = Eta)
+    })
+
+Theta %->% c(sgd_th1, sgd_th0)
+
+## generate a function with the fitted line
+fit_sgd_reg <- function(x) sgd_th0 + sgd_th1 * x
+
+noisy %>%
+    ggplot(aes(x = x, y = y)) +
+    geom_point(color = "mediumpurple")+
+    geom_smooth(method = "lm",
+                se = FALSE,
+                lty = 2,
+                color = "firebrick",
+                alpha = 0.3) +
+    geom_line(aes(x = x, y = fit_simple_reg(x)),
+              color = "forestgreen") +
+    geom_line(aes(x = x, y = fit_ols_reg(x)),
+              color = "orange") +
+    geom_line(aes(x = x, y = fit_sgd_reg(x)),
+              color = "pink") +
+    ggtitle("Noisy Data Samples from a Linear Line")
+#+END_SRC

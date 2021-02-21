@@ -93,3 +93,12 @@ url %>%
     group_by(date, station) %>%
     summarize(rides = max(rides), .groups = "drop")
 #+END_SRC
+
+* A Review of R Modeling Fundamentals
+
+  This chapter is a brief illustration of core language conventions.
+
+#+BEGIN_SRC R
+
+#+END_SRC
+
