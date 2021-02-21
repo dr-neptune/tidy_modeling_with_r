@@ -210,29 +210,45 @@ noisy %>%
   The learning rate is an important parameter. If it's too large, the solution might never converge, and if its too small it will take a lot of iterations.
 
 #+BEGIN_SRC R
-update <- function(Theta, X, y, learning_rate) {
-    ## compute gradient
-    gradient <- - 2.0 * (t(X) %*% (y - X %*% Theta))
-    ## update the parameters
-    Theta <- Theta - (gradient * learning_rate)
+update <- function(Theta, X, y, lr) {
+    ## get the gradient
+    grad = - 2 * t(X) %*% (y - (X %*% Theta))
+    ## update Theta parameter
+    Theta <- Theta - 2 * grad * lr
+    return(Theta)
 }
 
-## this is not correct!
-t(x_mat) %*% (noisy$y - x_mat %*% c(1.93, 3.16))
+x_mat2 <- t(matrix(c(noisy$x, rep(1, times = length(noisy$x))), nrow = 2))
 
-- 2.0 * (t(x_mat) %*% (noisy$y - (x_mat %*% c(rnorm(1), rnorm(1))))) * 0.000001
+Theta <- c(rnorm(1), rnorm(1)); Eta <- 0.0000001; losses <- double(); params <- double()
 
-Theta <- c(rnorm(1), rnorm(1)); Eta <- 0.000001; losses <- double(); params <- double()
+walk(1:1000, ~ {
+    Theta <<- update(Theta, x_mat, noisy$y, 0.0001)
+    losses <<- append(losses, mean((noisy$y - (x_mat2 %*% Theta))^2))
+    params <<- append(params, Theta)
+})    
 
-map(1:1500,
-    ~ {
-        Theta <<- update(Theta = Theta,
-                       X = x_mat,
-                       y = noisy$y,
-                       learning_rate = Eta)
-    })
+Theta    
 
-Theta %->% c(sgd_th1, sgd_th0)
+tibble(params) %>%
+    mutate(row_number = row_number()) %>%
+    filter(row_number %% 2 == 0) %>%
+    rename("theta_1" = params) -> theta_1
+
+tibble(params) %>%
+    mutate(row_number = row_number()) %>%
+    filter(row_number %% 2 == 1) %>%
+    rename("theta_0" = params) -> theta_0
+
+theta_1 %>%
+    mutate(row_number = row_number - 1) %>%
+    inner_join(theta_0) %>%
+    select(- row_number) %>%
+    add_column(losses) -> params
+
+
+
+Theta %->% c(sgd_th0, sgd_th1)
 
 ## generate a function with the fitted line
 fit_sgd_reg <- function(x) sgd_th0 + sgd_th1 * x
@@ -250,6 +266,11 @@ noisy %>%
     geom_line(aes(x = x, y = fit_ols_reg(x)),
               color = "orange") +
     geom_line(aes(x = x, y = fit_sgd_reg(x)),
-              color = "pink") +
+                color = "pink") +
     ggtitle("Noisy Data Samples from a Linear Line")
+
+params %>%
+    ggplot(aes(x = theta_0, y = theta_1, z = losses)) +
+    geom_contour_filled()
+
 #+END_SRC
