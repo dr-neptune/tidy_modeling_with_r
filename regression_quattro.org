@@ -88,7 +88,7 @@ noisy %>%
 
   In our regression example, if we assume that all samples $(y_i, x_i)$ are taken independently from the normal distribution $y \sim \mathcal{N}(\theta_0 + \theta_1 x_1, \sigma^2)$, we can  write the likelihood function based on the definition of the normal distribution's density function:
 
-  $p(y | x, \theta_0, \theta_1) = \Pi_{i = 1}^n p(y_i | x_i, \theta_0, \theta_1) = \Pi_{i = 1}^n \frac{1}{\sqrt{2 \pi \sigma^2}} \exp (- \frac{(y_i - (\theta_0 + \theta_1 x_i))^2}{2 \sigma^2})$
+  $p(y | x, \theta_0, \theta_1) = \Pi_{i = 1}^n p(y_i | x_i, \theta_0, \theta_1) = \Pi_{i = 1}^n \frac{1}{\sqrt{2 \pi \sigma^2}} \exp (- \frac{(y_i - (\theta_0 + \theta_1 x_i))^2}{2 \sigma^2})$ 
 
 * Simple Linear Regression
 
@@ -246,8 +246,6 @@ theta_1 %>%
     select(- row_number) %>%
     add_column(losses) -> params
 
-
-
 Theta %->% c(sgd_th0, sgd_th1)
 
 ## generate a function with the fitted line
@@ -268,9 +266,90 @@ noisy %>%
     geom_line(aes(x = x, y = fit_sgd_reg(x)),
                 color = "pink") +
     ggtitle("Noisy Data Samples from a Linear Line")
-
-params %>%
-    ggplot(aes(x = theta_0, y = theta_1, z = losses)) +
-    geom_contour_filled()
-
 #+END_SRC
+
+* Markov Chain Monte Carlo Parameter Estimation
+
+  An alternative to optimizing the likelihood function is to approximate the full posterior by sampling with MCMC methods.
+
+  One such algorithm is the Metropolis-Hastings algorithm, which allows us to sample from the posterior $p(\theta | y, x)$.
+
+  The Metropolis Hastings algorithm defines a way to create a Markov chain which has as a stationary distribution the posterior $p(\theta | y, x)$ we are trying to approximate.
+  This means that if we sample an infinite number of samples from this markov chain the samples should be as if they were sampled from the posterior.
+
+  Given an initial guess for parameters $\theta(0)$, the Metropolis Hastings algorithm works as follows:
+
+  1. Propose a new parameter value $\theta_p$ by adding random noise to the initial parameters:
+
+     $\theta_p(k) = \theta(k) + \Delta \theta$ with $\Delta \theta \sim \mathcal{N}(0, \sigma^2)$
+
+  2. Find out how much more likely the new proposed parameter $\theta_p (k)$ is with respect to the previous parameter $\theta(k)$ by calculating the ratio:
+
+     $\rho = \frac{p(\theta_p | y, x)}{p(\theta | y, x)} = \frac{\frac{p(y | x, \theta_p) p(\theta_p)}{p(y | x)}}{\frac{p(y | x, \theta)p(\theta)}{p(y | x)}} = \frac{p(y | x, \theta_p) p(\theta_p)}{p(y | x, \theta)p(\theta)}$
+
+  3. Accept the proposal $\theta_p(k)$ as the new parameter $\theta(k + 1)$ if the ratio $\rho \geq 1$, or if $\rho < 1$ accept $\theta_p(k)$ as a new parameter with probability $\rho$.
+     If not accepted, keep $\theta(k + 1) = \theta(k)$.
+
+  4. Go to step 1
+
+  To keep it simple we will ignore the prior $p(\theta)$ and treat it as an improper prior when calculating the ratio $\rho = \frac{p(y | x, \theta_p)}{p(y | x, \theta)}$
+
+  We defined our likelihood function earlier as $p(y | x, \theta_0, \theta_1) = \Pi_{i = 1}^n p(y_i | x_i, \theta_0, \theta_1) = \Pi_{i = 1}^n \frac{1}{\sqrt{2 \pi \sigma^2}} \exp (- \frac{(y_i - (\theta_0 + \theta_1 x_i))^2}{2 \sigma^2})$
+  To avoid numerical underflow when probabilities are small, we will be performing the computations in log space where multiplications become additions.
+  
+** Parameter Estimation
+
+   After sampling, we can find the best point estimates of the parameter by Bayesian Estimation by taking the Expected Value (mean) of the sampled parameters.
+   In practice, we only compute the mean over the last samples because MCMC needs the first steps to converge towards the stationary distribution.
+
+#+BEGIN_SRC R
+mh_step <- function(x, y, theta_0, theta_1, sigma) {
+    log_likelihood <- function(y, theta_0, theta_1, sigma) {
+        sigma_sq <- sigma * sigma
+        sse <- sum((y - (theta_0 + theta_1 * x))^2)
+
+        - length(y) * log(sqrt(2 * pi * sigma_sq)) - (sse / (2 * sigma_sq))
+    }
+    
+    ## run until new proposed sample has been accepted
+    theta_0_p <- theta_0 + rnorm(1)
+    theta_1_p <- theta_1 + rnorm(1)
+    sigma_p <- sigma + rnorm(1)
+    log_ratio <- (log_likelihood(y, theta_0_p, theta_1_p, sigma_p) - log_likelihood(y, theta_0, theta_1, sigma))
+
+    if (log_ratio >= 2.71) {
+        tibble("t0" = theta_0_p,
+               "t1" = theta_1_p,
+               "s" = sigma_p)
+    } else if (log(runif(1)) < log_ratio) {
+        tibble("t0" = theta_0,
+               "t1" = theta_1,
+               "s" = sigma)
+    } else {
+        mh_step(x, y, theta_0_p, theta_1_p, sigma_p)
+    }
+}
+
+
+set.seed(8888)
+
+## set initial parameters
+theta_0 <- 0; theta_1 <- 1; sigma_1 <- 1
+
+## get 3000 runs of it
+map(1:10000, ~ mh_step(noisy$x, noisy$y, theta_0, theta_1, sigma_1)) %>% bind_rows() -> mh_out
+
+## compute the expected values of the samples. drop the first 1k for a burn-in period
+(mh_out %>%
+    slice(1001:nrow(.)) %>% 
+    summarize("t0" = mean(t0),
+              "t1" = mean(t1)) %->% c(b0, b1))
+
+fitted_line <- function(x) b0 + b1 * x
+
+noisy %>%
+    ggplot(aes(x = x, y = y)) +
+    geom_point() +
+    geom_abline(intercept = b0, slope = b1)
+#+END_SRC
+
