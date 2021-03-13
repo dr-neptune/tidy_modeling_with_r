@@ -1,0 +1,26 @@
+#+BEGIN_SRC R
+library(tidyverse)
+library(magrittr)
+library(tidymodels)
+#+END_SRC
+
+* The Ames Housing Data
+
+  This is different than the ames raw data. See the make_ames_data.R script.
+  
+#+BEGIN_SRC R
+(ames <- read_csv("ames_data_cleaned.csv"))
+#+END_SRC
+
+* Exploring Important Features
+
+#+BEGIN_SRC R
+ames %>%
+    ggplot(aes(x = Sale_Price)) +
+    geom_histogram(bins = 50) +
+    scale_x_log10()
+
+## apply log-scale
+ames %<>% mutate(Sale_Price = log10(Sale_Price))
+#+END_SRC
+
