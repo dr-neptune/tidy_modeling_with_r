@@ -99,6 +99,197 @@ url %>%
   This chapter is a brief illustration of core language conventions.
 
 #+BEGIN_SRC R
+crickets <- c("Species   Temp   Pulse
+                 ex       20.8   67.9
+                 ex       20.8   65.1
+                 ex       24     77.3
+                 ex       24     78.7
+                 ex       24     79.4
+                 ex       24     80.4
+                 ex       26.2   85.8
+                 ex       26.2   86.6
+                 ex       26.2   87.5
+                 ex       26.2   89.1
+                 ex       28.4   98.6
+                 ex       29    100.8
+                 ex       30.4   99.3
+                 ex       30.4  101.7
+                 niv      17.2   44.3
+                 niv      18.3   47.2
+                 niv      18.3   47.6
+                 niv      18.3   49.6
+                 niv      18.9   50.3
+                 niv      18.9   51.8
+                 niv      20.4   60
+                 niv      21     58.5
+                 niv      21     58.9
+                 niv      22.1   60.7
+                 niv      23.5   69.8
+                 niv      24.2   70.9
+                 niv      25.9   76.2
+                 niv      26.5   76.1
+                 niv      26.5   77
+                 niv      26.5   77.7
+                 niv      28.6   84.7") %>%
+    textConnection() %>%
+    read.table(header = TRUE) %>%
+    as_tibble() %>%
+    set_names("species", "temp", "rate")
 
+crickets %>%
+    ggplot(aes(x = temp, y = rate, col = species)) +
+    geom_point() +
+    geom_smooth(method = lm, se = FALSE) +
+    labs(x = "Temperature (C)",
+         y = "Chirp Rate (per minute)")
+#+END_SRC
+
+When R encodes columns that are not numbers, it uses a data structure called a factor and converts those factors into dummy variables when using base model formulas.
+
+#+BEGIN_SRC R
+crickets %>%
+    lm(rate ~ species + temp, .)
+
+## with interactions
+crickets %>%
+    lm(rate ~ species + temp + temp:species, .)
+
+## expand all interactions containing interactions with 2 variables
+crickets %>%
+    lm(rate ~ (species + temp)^2, .)
+
+## another shortcut to expand factors to include all possible interactions
+crickets %>%
+    lm(rate ~ (species * temp)^2, .)
+
+## inline functions can be used
+crickets %>%
+    lm(rate ~ (species + log(temp))^2, .)
+
+## general math fns, like C -> F
+crickets %>%
+    lm(rate ~ (species + I(temp * (9 / 5) + 32))^2, .)
+
+## polynomial expansion. Creates linear, quadratic and cubic terms for temp
+crickets %>%
+    lm(rate ~ (species + poly(temp, 3))^2, .)
+
+## reference all fields
+crickets %>%
+    lm(rate ~ (.)^3, .)
+#+END_SRC
+
+Let's fit a model
+
+#+BEGIN_SRC R
+## make a 2 way interaction model
+(interaction_fit <- lm(rate ~ (temp + species)^2, crickets))
+
+interaction_fit %>%
+    glance()
+
+## place 2 plots next to each other
+par(mfrow = c(1, 2))
+## show residuals vs predicted values
+plot(interaction_fit, which = 1)
+## a normal quantile plot on the residuals
+plot(interaction_fit, which = 2)
+#+END_SRC
+
+Now we can assess if the inclusion of the interaction term is necessary
+
+The most appropriate approach for this model is to recompute the model without the interaction term and use the anova() method.
+
+#+BEGIN_SRC R
+main_effect_fit <- lm(rate ~ temp + species, crickets)
+
+## compare the two models
+anova(main_effect_fit, interaction_fit)
+#+END_SRC
+
+Analysis of Variance Table
+
+Model 1: rate ~ temp + species
+Model 2: rate ~ (temp + species)^2
+  Res.Df    RSS Df Sum of Sq     F Pr(>F)
+1     28 89.350                          
+2     27 85.074  1    4.2758 1.357 0.2542
+
+The anova test generated a p-value of .25. This implies that there is a lack of evidence for the alternative hypothesis that the interaction term is needed by the model.
+For this reason, we will conduct further analysis on the model without the interaction.
+
+Residual plots should be reassessed to make sure that our theoretical assumptions are valid enough to trust the p-value produced by the model.
+
+#+BEGIN_SRC R
+library(ggfortify)
+
+autoplot(main_effect_fit)
+#+END_SRC
+
+We can use the summary() method to inspect the coefficients, standard errors, and p-values of each model term:
+
+#+BEGIN_SRC R
+summary(main_effect_fit)
+
+main_effect_fit %>% augment() -> main_fitted
+
+plot_ly(x = crickets$temp,
+        y = crickets$rate,
+        z = as.numeric(factor(crickets$species)),
+        type = "scatter3d",
+        mode = "markers",
+        color = as.numeric(factor(crickets$species))) %>%
+    add_trace(data = main_fitted,
+              x = main_fitted$temp,
+              y = main_fitted$.fitted,
+              z = as.numeric(factor(main_fitted$species)),
+              type = "mesh3d")
+
+options(browser = "firefox")
+#+END_SRC
+
+The chirp rate for each species increases by 3.6 chirps as the temperature increases by a single degree. This shows strong statistical significance as evidenced by the p-value.
+The species term has a value of -10.07. This indicates that across all temperature values, O. niveus has a chirp rate that is about 10 fewer chirps per minute than O. exclamationis.
+
+The only issue in this analysis is the intercept value. It indicates that at 0 C, there are negative chirps per minute for both species.
+
+#+BEGIN_SRC R
+tibble(species = "niv", temp = 15:20) %>%
+    predict(main_effect_fit, .)
+#+END_SRC
+
+* What does the R formula do?
+
+  The R model formula is used by many modeling packages. It usually serves multiple purposes:
+
+  - The formula defines the columns that are used by the model
+  - The standard R machinery uses the formula to encode the columns into an appropriate format
+  - The roles of the columns are defined by the formula
+
+* Why tidiness is important for modeling
+
+#+BEGIN_SRC R
+mtcars %>%
+    select(-mpg) %>%
+    map(~ .x %>% cor.test(y = mtcars$mpg) %>% tidy()) %>%
+    bind_rows(.id = "predictor") %>%
+    ggplot(aes(x = fct_reorder(factor(predictor), estimate))) +
+    geom_point(aes(y = estimate)) +
+    geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = .1) +
+    labs(x = NULL, y = "Correlation with MPG")
+#+END_SRC
+
+* Combining Base R Models and the Tidyverse
+
+#+BEGIN_SRC R
+crickets %>%
+    ## split by species
+    group_nest(species) %>%
+    ## fit a model for each species
+    mutate(model = map(data, ~ lm(rate ~ temp, data = .x))) %>%
+    ## collect the coefficients for each of these models
+    mutate(coef = map(model, tidy)) %>%
+    select(species, coef) %>% 
+    unnest(cols = c(coef))
 #+END_SRC
 
