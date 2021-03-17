@@ -1,15 +1,17 @@
 #+BEGIN_SRC R
 library(tidyverse)
 library(magrittr)
+library(zeallot)
 library(tidymodels)
+library(modeldata)
 #+END_SRC
 
-* The Ames Housing Data
+#+TITLE: The Ames Housing Data
 
-  This is different than the ames raw data. See the make_ames_data.R script.
-  
 #+BEGIN_SRC R
-(ames <- read_csv("ames_data_cleaned.csv"))
+data(ames)
+
+ames %>% glimpse
 #+END_SRC
 
 * Exploring Important Features
@@ -17,10 +19,56 @@ library(tidymodels)
 #+BEGIN_SRC R
 ames %>%
     ggplot(aes(x = Sale_Price)) +
+    geom_histogram(bins = 50)
+#+END_SRC
+
+
+The data is right skewed -- there are more inexpensive houses than expensive ones.
+
+When modeling this outcome, a strong argument can be made that the price should be log-transformed. The advantages of doing this are that no houses would be predicted with negative sales prices and that errors in predicting expensive houses will not have undue influence on the model
+
+#+BEGIN_SRC R
+ames %>%
+    ggplot(aes(x = Sale_Price)) +
     geom_histogram(bins = 50) +
     scale_x_log10()
 
-## apply log-scale
 ames %<>% mutate(Sale_Price = log10(Sale_Price))
 #+END_SRC
+
+It is critical to conduct EDA prior to beginning any modeling.
+
+Some basic questions:
+
+- Are there any odd or noticeable things about the distributions of the individual predictors? Is there much skewness or any pathological distributions?
+- Are there high correlations between predictors?
+- Are there associations between predictors and the outcomes?
+
+#+TITLE: Spending Our Data
+
+* Common Methods for Splitting Data
+
+#+BEGIN_SRC R
+set.seed(8888)
+
+(ames_split <- initial_split(ames, prop = 0.8))
+
+c(ames_train, ames_test) %<-% list("training" = training(ames_split),
+                                   "testing" = testing(ames_split))
+#+END_SRC
+
+Simple random sampling is appropriate in many cases, but there are exceptions. When there is a dramatic class imbalance in classification problems, using a simple random sample may haphazardly allocate these infrequent samples disproportionately into the training or test set.
+
+To avoid this, /statified sampling/ can be used. The training / test split is conducted separately within each class and then these subsamples are combined into the overall training and test set. For regression problems, the outcome data can be artificially binned into quartiles and then stratified sampling conducted four separate times.
+
+We could run a stratified sample with the strat argument:
+
+#+BEGIN_SRC R
+(ames_split <- initial_split(ames, prop = 0.8, strata = Sale_Price))
+
+c(ames_train, ames_test) %<-% list("training" = training(ames_split),
+                                   "testing" = testing(ames_split))
+#+END_SRC
+
+* Multi-Level Data
 
