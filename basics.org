@@ -14,6 +14,8 @@ data(ames)
 ames %>% glimpse
 #+END_SRC
 
+#+RESULTS:
+
 * Exploring Important Features
 
 #+BEGIN_SRC R
@@ -164,7 +166,7 @@ One of the most common feature engineering tasks is transforming nominal or qual
 ames_train %>%
     ggplot(aes(y = Neighborhood)) +
     geom_bar() +
-    labs(y = NULL)
+    labs(y = NULL) 
 #+END_SRC
 
 Here there are 2 neighborhoods that have less than 5 properties in the training data; in this case, no houses at all in the landmark neighborhood were included in the training set. 
@@ -187,6 +189,58 @@ The most common is to use dummy, or indicator variables. This is traditionally c
 
 Traditional dummy variables require that all of the possible categories be known to create a full set of numeric features. There are other methods for doing this transformation to a numeric format. *Feature hashing* methods only consider the value of the category to assign it to a predefined pool of dummy variables. This can be a good strategy when there are a large number of possible categories, but the statistical properties may not be optimal. 
 
-Another method that is useful when there are a large number of categories is called effect or likelihood encodings. 
+Another method that is useful when there are a large number of categories is called effect or likelihood encodings. This method replaces the original data with a single numeric column that measures the /effect/ of that data. For example, with the neighborhood predictor, the mean sale price is computed for each neighborhood and these means are substituted for the original data values. This can be effective, but should be used with care. In effect, a mini-model is being added to the actual model and this can lead to overfitting. 
+
+* Interaction Terms
+
+Interaction effects involve two or more predictors. Such an effect occurs when one predictor has an effect on the outcome that is contingent on one or more predictors. 
+
+After exploring the Ames training set, we might find that the regression slopes for the general living area differ for different building types.
+
+#+BEGIN_SRC R
+ames_train %>%
+    ggplot(aes(x = Gr_Liv_Area, y = 10^Sale_Price)) +
+    geom_point(alpha = 0.2) +
+    facet_wrap(~ Bldg_Type) +
+    geom_smooth(method = lm, formula = y ~ x, se = FALSE, color = "blue") +
+    scale_x_log10() +
+    scale_y_log10() +
+    labs(x = "General Living Area",
+         y = "Sale Price (USD)")
+#+END_SRC
+
+In base R, we would define interactions as such:
+
+#+BEGIN_SRC R
+Sale_Price ~ Neighborhood + log10(Gr_Liv_Area):Bldg_Type
+
+Sale_Price ~ Neighborhood + log10(Gr_Liv_Area) * Bldg_Type
+#+END_SRC
+
+where * expands those columns to the main effects and interaction term.
+
+We could also add the interaction effects in a recipe:
+
+#+BEGIN_SRC R
+recipe(Sale_Price ~ Neighborhood + Gr_Liv_Area + Year_Built + Bldg_Type,
+       data = ames_train) %>%
+    step_log(Gr_Liv_Area, base = 10) %>%
+    step_other(Neighborhood, threshold = 0.01) %>% 
+    step_dummy(all_nominal()) %>%
+    step_interact(~ Gr_Liv_Area:starts_with("Bldg_Type_")) -> simple_ames 
+#+END_SRC
+
+
+* Skipping Steps for New Data
+
+For simple transformations of the outcome column(s), it is strongly suggested that those operations be conducted outside of the recipe.
+
+* Other Examples of Recipe Steps
+
+** Spline Functions
+
+When a predictor has a nonlinear relationship with the outcome, some types of predictive models can adaptively approximate this relationship during training. 
+However, simpler is usually better and it is common to try to use a simple model like a linear fit to add in specific nonlinear features for predictors that make need them.
+
 
 
